@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Screensaver</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script type="text/javascript" src="config.js"></script>
+</head>
+<style type="text/css">
+    body, html {
+        background-color: black;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+    }
+
+    #info {
+        z-index: 50;
+        position: absolute;
+        background: black;
+        color: white;
+    }
+
+    #one, #two {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    img {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        object-fit: cover;
+        animation-timing-function: linear;
+    }
+
+    #two.visible {
+        opacity: 1;
+    }
+
+    #two {
+        opacity: 0;
+        z-index: 5;
+        transition: opacity ease;
+        transition-duration: 2s;
+    }
+
+    div p {
+        font-size: 50px;
+        position: absolute;
+        color: white;
+        left: 6%;
+        right: 6%;
+        text-shadow: 0px 2px 3px rgba(0, 0, 0, 0.5), 0px 4px 13px rgba(0, 0, 0, 0.2), 0px 9px 23px rgba(0, 0, 0, 0.2);
+        bottom: 8%;
+        font-family: sans-serif;
+        margin: 0;
+        display: block;
+    }
+
+    body.hiddenTitles div p.title {
+        display: none;
+    }
+
+    @keyframes zoomOut {
+        from {
+            transform: scale(1.1);
+        }
+        to {
+            transform: scale(1);
+        }
+    }
+
+    @keyframes zoomIn {
+        from {
+            transform: scale(1);
+        }
+        to {
+            transform: scale(1.1);
+        }
+    }
+
+    @keyframes moveRight {
+        from {
+            transform: scale(1.1) translateX(3%);
+        }
+        to {
+            transform: scale(1.1) translateX(-3%);
+        }
+    }
+
+    @keyframes moveLeft {
+        from {
+            transform: scale(1.1) translateX(-3%);
+        }
+        to {
+            transform: scale(1.1) translateX(3%);
+        }
+    }
+
+    @keyframes moveUp {
+        from {
+            transform: scale(1.1) translateY(4%);
+        }
+        to {
+            transform: scale(1.1) translateY(-4%);
+        }
+    }
+
+    @keyframes moveDown {
+        from {
+            transform: scale(1.1) translateY(-4%);
+        }
+        to {
+            transform: scale(1.1) translateY(4%);
+        }
+    }
+
+    @keyframes goGray {
+        from {
+            filter: grayscale(0%);
+        }
+        to {
+            filter: grayscale(100%);
+        }
+    }
+
+    @keyframes goColor {
+        from {
+            filter: grayscale(100%);
+        }
+        to {
+            filter: grayscale(0%);
+        }
+    }
+
+</style>
+
+<body>
+<p id="info"></p>
+<div id="one">
+    <img src="background.png" alt="">
+    <p class="title"></p>
+</div>
+<div id="two">
+    <img src="background.png" alt="">
+    <p class="title"></p>
+</div>
+</body>
+
+<script>
+    let plexTokenParameter;
+    let urlSections;
+    let sectionList = [];
+    let sectionCount;
+    let videoList = [];
+    let one = document.getElementById("one");
+    let two = document.getElementById("two");
+    let infoBox = document.getElementById("info");
+
+    function initialize() {
+        plexTokenParameter = "?X-Plex-Token=" + config.plexToken;
+        urlSections = config.plexAddress + "/library/sections" + plexTokenParameter;
+
+        two.style.transitionDuration = config.transitionDuration + "ms";
+        if (!config.showTitle) document.body.classList.add("hiddenTitles");
+        document.getElementsByClassName("title")[0].style.color = config.titleColor;
+        document.getElementsByClassName("title")[1].style.color = config.titleColor;
+        document.getElementsByClassName("title")[0].style.textAlign = config.titlePosition;
+        document.getElementsByClassName("title")[1].style.textAlign = config.titlePosition;
+        document.getElementsByClassName("title")[0].style.opacity = config.titleOpacity;
+        document.getElementsByClassName("title")[1].style.opacity = config.titleOpacity;
+
+        if (config.usePlex) {
+            getSections();
+        } else {
+            console.log("Plex Api disabled in config");
+            startSlideShow();
+        }
+    }
+
+    function getSections() {
+        fetch(urlSections).then(function (response) {
+            if (response.ok) {
+                return response.text();
+            } else {
+                let errorText = "Error " + response.status + " " + response.statusText + "\n";
+                switch (response.status) {
+                    case 401:
+                        errorText += "Check your Plex Token";
+                        break;
+                }
+                errorText += "\nCould not load sections";
+                infoBox.innerText = errorText;
+                startSlideShow();
+            }
+        }).then(function (text) {
+            let parser = new DOMParser();
+            let xmlDoc = parser.parseFromString(text, "text/xml");
+            let sections = xmlDoc.getElementsByTagName("Directory");
+
+            console.log("Found " + sections.length + " sections");
+            sectionCount = sections.length;
+            for (let i = 0; i < sections.length; i++) {
+                let section = {};
+                section.title = sections[i].getAttribute("title");
+                section.key = sections[i].getAttribute("key");
+                section.type = sections[i].getAttribute("type");
+                sectionList.push(section);
+            }
+
+            for (let i = 0; i < sectionList.length; i++) {
+                getContentArtFromSection(sectionList[i])
+            }
+        }).catch(function (err) {
+            console.log(err);
+            if (err === "fetch failed") {
+                infoBox.innerText = "Error: " + err.toString() + "\nCheck your Plex ip address";
+            } else {
+                infoBox.innerText = "Unknown Error: " + err.toString() + "\n";
+            }
+            startSlideShow();
+        })
+    }
+
+    function getContentArtFromSection(section) {
+        let tagName;
+
+        if (config.librariesToExclude.includes(section.title)) {
+            console.log("Ignored section with key '" + section.key + "' of type '" + section.type + "' called '" + section.title + "' because you said so in config.js");
+            isLastOne();
+            return;
+        }
+
+        if (section.type === "movie") {
+            tagName = "Video";
+        } else if (section.type === "show") {
+            tagName = "Directory";
+        } else {
+            console.log("Ignored section with key '" + section.key + "' of type '" + section.type + "' called '" + section.title + "'");
+            //eg Podcasts, Music etc. - we dont want its art
+            return;
+        }
+
+        let sectionUrl = config.plexAddress + "/library/sections/" + section.key + "/all" + plexTokenParameter;
+        fetch(sectionUrl).then(function (response) {
+            if (response.ok) {
+                return response.text();
+            } else {
+                throw new Error('Could not load section "' + section.title + '" of type "' + section.type + '" with key: "' + section.key + '"');
+            }
+        }).then(function (text) {
+            let parser = new DOMParser();
+            let xmlDoc = parser.parseFromString(text, "text/xml");
+            let items = xmlDoc.getElementsByTagName(tagName);
+
+            console.log(items.length + " items found in section '" + section.title + "'");
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].getAttribute("art") === null) {
+                    console.log("No artwork provided for media '" + items[i].getAttribute("title") + "'");
+                    continue;
+                }
+                let video = {};
+                video.title = items[i].getAttribute("title");
+                video.key = items[i].getAttribute("ratingKey");
+                video.art = config.plexAddress + items[i].getAttribute("art") + plexTokenParameter;
+                videoList.push(video);
+            }
+            if (isLastOne()) {
+                startSlideShow()
+            }
+        }).catch(function (err) {
+            console.log("Unexptected error: " + 'Could not load section "' + section.title + '" of type "' + section.type + '" with key: "' + section.key + '"');
+            console.log(err);
+        });
+    }
+
+    function isLastOne() {
+        sectionCount--;
+        if (sectionCount === 0) {
+            startSlideShow();
+        }
+    }
+
+    function startSlideShow() {
+        if (config.useExtraImages) {
+            readAdditionalImages()
+        } else {
+            console.log("Local extra images disabled in config");
+        }
+        if (config.useExtraLinks) {
+            readAdditionalLinks()
+        } else {
+            console.log("Extra image links disabled in config");
+        }
+
+        if (videoList.length > 0) {
+            putRandomImageUrl(two);
+            swapImageAndChangeSrc();
+
+            setInterval(function () {
+                swapImageAndChangeSrc();
+            }, config.imageInterval);
+        } else {
+            document.getElementById("info").innerText += "\nYou didn't provide any images or something went wrong";
+            console.log("You didn't provide any images or something went wrong");
+        }
+    }
+
+    function swapImageAndChangeSrc() {
+        two.classList.toggle("visible");
+        let twoActive = two.classList.contains("visible");
+        let newInactive = twoActive ? one : two;
+        let newActive = twoActive ? two : one;
+
+        let newAnimationName = "none";
+        if (config.animations.length > 0) {
+            newAnimationName = config.animations[Math.floor(Math.random() * config.animations.length)];
+        }
+
+        newActive.getElementsByTagName("img")[0].style.animationName = newAnimationName;
+        newActive.getElementsByTagName("img")[0].style.animationDuration = config.imageInterval + config.transitionDuration + "ms";
+
+        setTimeout(() => putRandomImageUrl(newInactive), config.imageInterval / 2);
+    }
+
+    function putRandomImageUrl(containerDiv) {
+        let item = videoList[Math.floor(Math.random() * videoList.length)];
+        containerDiv.getElementsByTagName("img")[0].src = item.art;
+        containerDiv.getElementsByTagName("img")[0].style.animation = "";
+        containerDiv.getElementsByTagName("p")[0].textContent = item.title;
+    }
+
+    function readAdditionalImages() {
+        console.log("Using " + config.extraImages.length + " additional local artworks");
+        for (let i = 0; i < config.extraImages.length; i++) {
+            let video = {};
+            video.title = config.extraImages[i][0];
+            video.art = "extraImages/" + config.extraImages[i][1];
+            videoList.push(video);
+        }
+    }
+
+    function readAdditionalLinks() {
+        console.log("Using " + config.extraLinks.length + " additional external links");
+        for (let i = 0; i < config.extraLinks.length; i++) {
+            let video = {};
+            video.title = config.extraLinks[i][0];
+            video.art = config.extraLinks[i][1];
+            videoList.push(video);
+        }
+    }
+
+    initialize();
+
+</script>
+</html>
